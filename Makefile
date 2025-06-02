@@ -59,16 +59,16 @@ setup: deps ## Initial project setup
 .PHONY: deps
 deps: ## Download dependencies
 	@echo "📦 Downloading dependencies..."
-  $(GOMOD) download
-  $(GOMOD) tidy
+	$(GOMOD) download
+	$(GOMOD) tidy
 	@echo "✅ Dependencies downloaded"
 
 
 .PHONY: deps-update
 deps-update: ## Update dependencies
 	@echo "🔄 Updating dependencies..."
-    $(GOGET) -u ./...
-    $(GOMOD) tidy
+	$(GOGET) -u ./...
+	$(GOMOD) tidy
 	@echo "✅ Dependencies updated"
 
 .PHONY: test-config
@@ -86,55 +86,55 @@ build: build-bot build-voice-processor build-rag-indexer ## Build all binaries
 build-bot: ## Build Discord bot binary
 	@echo "🔨 Building Discord bot..."
 	@mkdir -p $(BINARY_PATH)
-    $(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
-    @echo "✅ Bot binary built: $(BOT_BINARY)"
+	$(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
+	@echo "✅ Bot binary built: $(BOT_BINARY)"
 
 .PHONY: build-voice-processor
 build-voice-processor: ## Build voice processor binary
 	@echo "🔨 Building voice processor..."
 	@mkdir -p $(BINARY_PATH)
-    $(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
+	$(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
 	@echo "✅ Voice processor binary built: $(VOICE_PROCESSOR_BINARY)"
 
 .PHONY: build-rag-indexer
 build-rag-indexer: ## Build RAG indexer binary
 	@echo "🔨 Building RAG indexer..."
 	@mkdir -p $(BINARY_PATH)
-    $(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
+	$(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
 	@echo "✅ RAG indexer binary built: $(RAG_INDEXER_BINARY)"
 
 .PHONY: build-linux
 build-linux: ## Build binaries for Linux
 	@echo "🔨 Building for Linux..."
 	@mkdir -p $(BINARY_PATH)/linux
-    GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
-    GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
-    GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
 	@echo "✅ Linux binaries built"
 
 ##@ Testing
 .PHONY: test
 test: ## Run tests
 	@echo "🧪 Running tests..."
-    $(GOTEST) -v -race -coverprofile=coverage.out ./...
+	$(GOTEST) -v -race -coverprofile=coverage.out ./...
 	@echo "✅ Tests completed"
 
 .PHONY: test-integration
 test-integration: ## Run integration tests
 	@echo "🧪 Running integration tests..."
-    $(GOTEST) -v -tags=integration ./tests/integration/...
+	$(GOTEST) -v -tags=integration ./tests/integration/...
 	@echo "✅ Integration tests completed"
 
 .PHONY: test-load
 test-load: ## Run load tests
 	@echo "🧪 Running load tests..."
-    $(GOTEST) -v -tags=load ./tests/load/...
+	$(GOTEST) -v -tags=load ./tests/load/...
 	@echo "✅ Load tests completed"
 
 .PHONY: test-coverage
 test-coverage: test ## Generate test coverage report
 	@echo "📊 Generating coverage report..."
-    $(GOCMD) tool cover -html=coverage.out -o coverage.html
+	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 	@echo "✅ Coverage report generated: coverage.html"
 
 .PHONY: test-watch
@@ -148,13 +148,13 @@ test-watch: ## Watch and run tests on file changes
 lint: ## Run linter
 	@echo "🔍 Running linter..."
 	@which $(GOLINT) > /dev/null || (echo "Installing golangci-lint..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin)
-    $(GOLINT) run ./...
-    @echo "✅ Linting completed"
+	$(GOLINT) run ./...
+	@echo "✅ Linting completed"
 
 .PHONY: fmt
 fmt: ## Format code
 	@echo "🎨 Formatting code..."
-    $(GOFMT) -s -w .
+	$(GOFMT) -s -w .
 	@echo "✅ Code formatted"
 
 .PHONY: fmt-check
@@ -166,7 +166,7 @@ fmt-check: ## Check code formatting
 .PHONY: vet
 vet: ## Run go vet
 	@echo "🔍 Running go vet..."
-    $(GOCMD) vet ./...
+	$(GOCMD) vet ./...
 	@echo "✅ Vet completed"
 
 .PHONY: check
@@ -295,7 +295,7 @@ deploy-prod: ## Deploy to production
 .PHONY: clean
 clean: ## Clean build artifacts
 	@echo "🧹 Cleaning build artifacts..."
-    $(GOCLEAN)
+	$(GOCLEAN)
 	@rm -rf $(BINARY_PATH)
 	@rm -f coverage.out coverage.html
 	@echo "✅ Cleaned"

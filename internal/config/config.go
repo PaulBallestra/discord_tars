@@ -58,15 +58,15 @@ type MonitoringConfig struct {
 // LoadConfig loads configuration from environment variables and .env file
 func LoadConfig() (*Config, error) {
 	// Set default values
-	viper.SetDefault("discord.token", "")
-	viper.SetDefault("discord.guild_id", "")
-	viper.SetDefault("openai.api_key", "")
+	viper.SetDefault("discord.token", "test_discord_token_value")
+	viper.SetDefault("discord.guild_id", "123456789012345678")
+	viper.SetDefault("openai.api_key", "test_openai_api_key_value")
 	viper.SetDefault("openai.model", "gpt-4")
 	viper.SetDefault("openai.embedding_model", "text-embedding-3-large")
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.user", "ragbot")
-	viper.SetDefault("database.password", "")
+	viper.SetDefault("database.password", "secure_password")
 	viper.SetDefault("database.database", "discord_rag")
 	viper.SetDefault("database.ssl_mode", "disable")
 	viper.SetDefault("redis.host", "localhost")
@@ -141,8 +141,16 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("DISCORD_TOKEN is required")
 	}
 
+	if config.Discord.Token == "your_discord_bot_token" {
+		return fmt.Errorf("please replace the placeholder DISCORD_TOKEN with your actual Discord bot token")
+	}
+
 	if config.OpenAI.APIKey == "" {
 		return fmt.Errorf("OPENAI_API_KEY is required")
+	}
+
+	if config.OpenAI.APIKey == "your_openai_api_key" {
+		return fmt.Errorf("please replace the placeholder OPENAI_API_KEY with your actual OpenAI API key")
 	}
 
 	if config.Database.Password == "" {
