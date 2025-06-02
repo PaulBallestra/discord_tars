@@ -16,12 +16,42 @@ RAG-Powered: Retrieval-Augmented Generation for contextual responses
 Multi-faceted Partner: Work collaborator, life advisor, business brainstormer
 Adaptive Personality: Context-aware responses based on conversation type
 Server Culture: Understands server-specific memes, inside jokes, and culture
+
+## New RAG Implementation 🧠
+
+Our Discord bot now features an improved RAG (Retrieval-Augmented Generation) system that:
+
+- Automatically processes and stores all messages in the server
+- Converts messages to vector embeddings using OpenAI's text-embedding-3-small model
+- Enables contextual awareness in conversations by retrieving relevant past messages
+- Uses GORM for efficient and reliable database operations
+- Maintains connections to Discord API to fetch accurate server, channel, and user information
+
+### How RAG Works
+
+1. **Message Processing**: All non-bot messages are captured, processed, and stored
+2. **Embedding Generation**: Messages are converted to vector embeddings
+3. **Vector Search**: When users ask questions, similar past messages are retrieved
+4. **Context Enhancement**: Retrieved messages provide context for AI responses
+5. **Smart Responses**: The AI uses this context to provide more relevant, server-aware answers
+
+### Database Schema
+
+The RAG system uses PostgreSQL with the pgvector extension for vector similarity search:
+
+- `guilds`: Stores Discord server information
+- `channels`: Stores Discord channel information
+- `users`: Stores Discord user information
+- `messages`: Stores message content with references to users, channels, and guilds
+- `message_embeddings`: Stores vector embeddings for messages
+
 🏗️ Tech Stack
 Core Technologies
 Language: Go 1.24.3
 Discord Library: DiscordGo
 AI Services: OpenAI (GPT-4, Whisper, TTS, Embeddings)
 Vector Database: PostgreSQL with pgvector extension
+ORM: GORM
 Cache & Messaging: Redis Cluster
 Communication: gRPC + REST APIs
 Infrastructure & DevOps
@@ -97,6 +127,67 @@ Docker & Docker Compose: Install Docker
 PostgreSQL 15+: Install PostgreSQL
 Redis 7+: Install Redis
 Make: Usually pre-installed on macOS/Linux
+
+## Setting Up the RAG Feature
+
+To set up and test the RAG (Retrieval-Augmented Generation) feature:
+
+1. **Install PostgreSQL with pgvector extension**:
+   ```bash
+   # For MacOS
+   brew install postgresql@15
+   brew install pgvector
+   
+   # For Ubuntu
+   sudo apt-get install postgresql-15
+   sudo apt-get install postgresql-15-pgvector
+   ```
+
+2. **Create PostgreSQL database**:
+   ```bash
+   createdb tars_db
+   psql -d tars_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+   ```
+
+3. **Set up environment variables**:
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your Discord token, OpenAI API key, and database credentials
+   ```
+
+4. **Run the bot**:
+   ```bash
+   cd cmd/bot
+   go run main.go
+   ```
+
+5. **Test RAG functionality**:
+   - Send messages in your Discord server
+   - The bot will automatically store messages and create embeddings
+   - Mention the bot or use `/ask` command with a question related to previous conversations
+   - The bot will use RAG to retrieve relevant context and provide more informed answers
+
+### Monitoring RAG Performance
+
+To check if RAG is working correctly:
+
+```bash
+# Connect to your PostgreSQL database
+psql -d tars_db
+
+# Check if messages are being stored
+SELECT COUNT(*) FROM messages;
+
+# Check if embeddings are being created
+SELECT COUNT(*) FROM message_embeddings;
+
+# View channel data
+SELECT id, name, guild_id FROM channels;
+
+# View guild data
+SELECT id, name FROM guilds;
+```
+
 Development Tools Setup
 # Install Go development tools
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
@@ -140,7 +231,7 @@ DISCORD_GUILD_ID=your_test_guild_id
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-4
-OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # Database Configuration
 POSTGRES_HOST=localhost

@@ -7,91 +7,94 @@ import (
 
 	"discord-tars/internal/models"
 	"discord-tars/internal/repository/postgres"
+
+	"gorm.io/gorm"
 )
 
 type MessageRepository struct {
-	db *postgres.DB
+	db *postgres.GormDB
 }
 
-func NewMessageRepository(db *postgres.DB) *MessageRepository {
+func NewMessageRepository(db *postgres.GormDB) *MessageRepository {
 	return &MessageRepository{db: db}
 }
 
 // StoreMessage saves a message with its user and channel info
 func (r *MessageRepository) StoreMessage(ctx context.Context, msg *models.Message, user *models.User, channel *models.Channel, guild *models.Guild) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Upsert guild
+		if err := tx.Where("id = ?", guild.ID).
+			Assign(models.Guild{Name: guild.Name}).
+			FirstOrCreate(guild).Error; err != nil {
+			return fmt.Errorf("failed to upsert guild: %w", err)
+		}
 
-	// Upsert guild
-	_, err = tx.ExecContext(ctx, `
-        INSERT INTO guilds (id, name) 
-        VALUES ($1, $2) 
-        ON CONFLICT (id) DO UPDATE SET 
-            name = EXCLUDED.name,
-            updated_at = NOW()`,
-		guild.ID, guild.Name)
-	if err != nil {
-		return fmt.Errorf("failed to upsert guild: %w", err)
-	}
+		// Upsert channel
+		if err := tx.Where("id = ?", channel.ID).
+			Assign(models.Channel{
+				GuildID: channel.GuildID,
+				Name:    channel.Name,
+				Type:    channel.Type,
+			}).
+			FirstOrCreate(channel).Error; err != nil {
+			return fmt.Errorf("failed to upsert channel: %w", err)
+		}
 
-	// Upsert channel
-	_, err = tx.ExecContext(ctx, `
-        INSERT INTO channels (id, guild_id, name, type) 
-        VALUES ($1, $2, $3, $4) 
-        ON CONFLICT (id) DO UPDATE SET 
-            name = EXCLUDED.name,
-            type = EXCLUDED.type,
-            updated_at = NOW()`,
-		channel.ID, channel.GuildID, channel.Name, channel.Type)
-	if err != nil {
-		return fmt.Errorf("failed to upsert channel: %w", err)
-	}
+		// Upsert user
+		if err := tx.Where("id = ?", user.ID).
+			Assign(models.User{
+				Username:      user.Username,
+				Discriminator: user.Discriminator,
+				Avatar:        user.Avatar,
+			}).
+			FirstOrCreate(user).Error; err != nil {
+			return fmt.Errorf("failed to upsert user: %w", err)
+		}
 
-	// Upsert user
-	_, err = tx.ExecContext(ctx, `
-        INSERT INTO users (id, username, discriminator, avatar) 
-        VALUES ($1, $2, $3, $4) 
-        ON CONFLICT (id) DO UPDATE SET 
-            username = EXCLUDED.username,
-            discriminator = EXCLUDED.discriminator,
-            avatar = EXCLUDED.avatar,
-            updated_at = NOW()`,
-		user.ID, user.Username, user.Discriminator, user.Avatar)
-	if err != nil {
-		return fmt.Errorf("failed to upsert user: %w", err)
-	}
+		// Upsert message
+		if err := tx.Where("id = ?", msg.ID).
+			Assign(models.Message{
+				ChannelID:   msg.ChannelID,
+				UserID:      msg.UserID,
+				GuildID:     msg.GuildID,
+				Content:     msg.Content,
+				Embeds:      msg.Embeds,
+				Attachments: msg.Attachments,
+				Timestamp:   msg.Timestamp,
+			}).
+			FirstOrCreate(msg).Error; err != nil {
+			return fmt.Errorf("failed to upsert message: %w", err)
+		}
 
-	// Insert message
-	_, err = tx.ExecContext(ctx, `
-        INSERT INTO messages (id, channel_id, user_id, content, embeds, attachments, timestamp) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (id) DO UPDATE SET 
-            content = EXCLUDED.content,
-            embeds = EXCLUDED.embeds,
-            attachments = EXCLUDED.attachments,
-            updated_at = NOW()`,
-		msg.ID, msg.ChannelID, msg.UserID, msg.Content, msg.Embeds, msg.Attachments, msg.Timestamp)
-	if err != nil {
-		return fmt.Errorf("failed to insert message: %w", err)
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 // StoreEmbedding saves the vector embedding for a message
-func (r *MessageRepository) StoreEmbedding(ctx context.Context, messageID int64, embedding []float32, chunkIndex int) error {
-	// Convert []float32 to PostgreSQL vector format
-	vectorStr := fmt.Sprintf("[%s]", strings.Trim(fmt.Sprintf("%v", embedding), "[]"))
+func (r *MessageRepository) StoreEmbedding(ctx context.Context, messageID int64, embeddingData []float32, modelName string) error {
+	if modelName == "" {
+		modelName = "text-embedding-3-small"
+	}
 
-	_, err := r.db.ExecContext(ctx, `
-        INSERT INTO message_embeddings (message_id, embedding, chunk_index) 
-        VALUES ($1, $2::vector, $3)`,
-		messageID, vectorStr, chunkIndex)
-	if err != nil {
-		return fmt.Errorf("failed to store embedding: %w", err)
+	// Convert []float32 to PostgreSQL vector format
+	vectorStr := fmt.Sprintf("[%s]", strings.Trim(fmt.Sprintf("%v", embeddingData), "[]"))
+
+	// Create or update embedding
+	embeddingRecord := models.MessageEmbedding{
+		MessageID: messageID,
+		Embedding: vectorStr,
+		ModelName: modelName,
+	}
+
+	result := r.db.WithContext(ctx).Where("message_id = ?", messageID).
+		Assign(models.MessageEmbedding{
+			Embedding: vectorStr,
+			ModelName: modelName,
+		}).
+		FirstOrCreate(&embeddingRecord)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to store embedding: %w", result.Error)
 	}
 
 	return nil
@@ -102,39 +105,49 @@ func (r *MessageRepository) SearchSimilarMessages(ctx context.Context, queryEmbe
 	// Convert query embedding to vector format
 	vectorStr := fmt.Sprintf("[%s]", strings.Trim(fmt.Sprintf("%v", queryEmbedding), "[]"))
 
-	query := `
-        SELECT 
-            m.id, m.channel_id, m.user_id, m.content, m.timestamp,
-            u.username, u.discriminator, u.avatar,
-            c.name as channel_name, c.type as channel_type,
-            1 - (me.embedding <=> $1::vector) as similarity
-        FROM message_embeddings me
-        JOIN messages m ON me.message_id = m.id
-        JOIN users u ON m.user_id = u.id
-        JOIN channels c ON m.channel_id = c.id
-        WHERE 1 - (me.embedding <=> $1::vector) > $2
-        ORDER BY me.embedding <=> $1::vector
-        LIMIT $3`
+	var results []models.SearchResult
 
-	rows, err := r.db.QueryContext(ctx, query, vectorStr, similarity, limit)
+	// Execute raw SQL for vector similarity search
+	query := `
+		SELECT 
+			m.id, m.channel_id, m.user_id, m.guild_id, m.content, m.timestamp,
+			u.id as user_id, u.username, u.discriminator, u.avatar_url,
+			c.id as channel_id, c.name as channel_name, c.type as channel_type,
+			1 - (me.embedding <=> $1::vector) as similarity
+		FROM message_embeddings me
+		JOIN messages m ON me.message_id = m.id
+		JOIN users u ON m.user_id = u.id
+		JOIN channels c ON m.channel_id = c.id
+		WHERE 1 - (me.embedding <=> $1::vector) > $2
+		ORDER BY me.embedding <=> $1::vector
+		LIMIT $3
+	`
+
+	rows, err := r.db.Raw(query, vectorStr, similarity, limit).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("failed to search similar messages: %w", err)
 	}
 	defer rows.Close()
 
-	var results []models.SearchResult
 	for rows.Next() {
 		var result models.SearchResult
+		var msg models.Message
+		var user models.User
+		var channel models.Channel
+
 		err := rows.Scan(
-			&result.Message.ID, &result.Message.ChannelID, &result.Message.UserID,
-			&result.Message.Content, &result.Message.Timestamp,
-			&result.User.Username, &result.User.Discriminator, &result.User.Avatar,
-			&result.Channel.Name, &result.Channel.Type,
+			&msg.ID, &msg.ChannelID, &msg.UserID, &msg.GuildID, &msg.Content, &msg.Timestamp,
+			&user.ID, &user.Username, &user.Discriminator, &user.Avatar,
+			&channel.ID, &channel.Name, &channel.Type,
 			&result.Similarity,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan result: %w", err)
 		}
+
+		result.Message = msg
+		result.User = user
+		result.Channel = channel
 		results = append(results, result)
 	}
 
@@ -143,38 +156,30 @@ func (r *MessageRepository) SearchSimilarMessages(ctx context.Context, queryEmbe
 
 // GetRecentMessages gets recent messages from a channel
 func (r *MessageRepository) GetRecentMessages(ctx context.Context, channelID int64, limit int) ([]models.SearchResult, error) {
-	query := `
-        SELECT 
-            m.id, m.channel_id, m.user_id, m.content, m.timestamp,
-            u.username, u.discriminator, u.avatar,
-            c.name as channel_name, c.type as channel_type
-        FROM messages m
-        JOIN users u ON m.user_id = u.id
-        JOIN channels c ON m.channel_id = c.id
-        WHERE m.channel_id = $1
-        ORDER BY m.timestamp DESC
-        LIMIT $2`
+	var messages []models.Message
+	var results []models.SearchResult
 
-	rows, err := r.db.QueryContext(ctx, query, channelID, limit)
+	// Get messages with preloaded relations
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Channel").
+		Where("channel_id = ?", channelID).
+		Order("timestamp DESC").
+		Limit(limit).
+		Find(&messages).Error
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get recent messages: %w", err)
 	}
-	defer rows.Close()
 
-	var results []models.SearchResult
-	for rows.Next() {
-		var result models.SearchResult
-		err := rows.Scan(
-			&result.Message.ID, &result.Message.ChannelID, &result.Message.UserID,
-			&result.Message.Content, &result.Message.Timestamp,
-			&result.User.Username, &result.User.Discriminator, &result.User.Avatar,
-			&result.Channel.Name, &result.Channel.Type,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan result: %w", err)
+	// Convert to search results
+	for _, msg := range messages {
+		result := models.SearchResult{
+			Message:    msg,
+			User:       msg.User,
+			Channel:    msg.Channel,
+			Similarity: 1.0, // Set similarity to 1.0 for recent messages (exact match)
 		}
-		// Set similarity to 1.0 for recent messages (exact match)
-		result.Similarity = 1.0
 		results = append(results, result)
 	}
 

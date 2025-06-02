@@ -17,12 +17,14 @@ import (
 type Service struct {
 	aiService interfaces.AIService
 	msgRepo   *repository.MessageRepository
+	session   *discordgo.Session
 }
 
-func NewService(aiService interfaces.AIService, msgRepo *repository.MessageRepository) *Service {
+func NewService(aiService interfaces.AIService, msgRepo *repository.MessageRepository, session *discordgo.Session) *Service {
 	return &Service{
 		aiService: aiService,
 		msgRepo:   msgRepo,
+		session:   session,
 	}
 }
 
@@ -51,22 +53,45 @@ func (s *Service) ProcessMessage(ctx context.Context, discordMsg *discordgo.Mess
 		Avatar:        discordMsg.Author.Avatar,
 	}
 
+	// Get channel information from Discord API
+	channelName := "unknown"
+	channelType := 0
+
+	if s.session != nil {
+		channel, err := s.session.Channel(discordMsg.ChannelID)
+		if err == nil && channel != nil {
+			channelName = channel.Name
+			channelType = int(channel.Type)
+		}
+	}
+
 	channel := &models.Channel{
 		ID:      channelID,
 		GuildID: guildID,
-		Name:    "unknown", // We'll need to get this from Discord
-		Type:    0,
+		Name:    channelName,
+		Type:    channelType,
+	}
+
+	// Get guild information from Discord API
+	guildName := "unknown"
+
+	if discordMsg.GuildID != "" && s.session != nil {
+		guild, err := s.session.Guild(discordMsg.GuildID)
+		if err == nil && guild != nil {
+			guildName = guild.Name
+		}
 	}
 
 	guild := &models.Guild{
 		ID:   guildID,
-		Name: "unknown", // We'll need to get this from Discord
+		Name: guildName,
 	}
 
 	message := &models.Message{
 		ID:        messageID,
 		ChannelID: channelID,
 		UserID:    userID,
+		GuildID:   guildID,
 		Content:   discordMsg.Content,
 		Timestamp: timestamp,
 	}
@@ -85,7 +110,7 @@ func (s *Service) ProcessMessage(ctx context.Context, discordMsg *discordgo.Mess
 			return nil
 		}
 
-		if err := s.msgRepo.StoreEmbedding(ctx, messageID, embedding, 0); err != nil {
+		if err := s.msgRepo.StoreEmbedding(ctx, messageID, embedding, "text-embedding-3-small"); err != nil {
 			return fmt.Errorf("failed to store embedding: %w", err)
 		}
 

@@ -160,6 +160,15 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 
 	fmt.Printf("📨 Message from %s: %s\n", m.Author.Username, m.Content)
 
+	// Process message for RAG indexing
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Process message for RAG context
+	if err := b.ragService.ProcessMessage(ctx, m.Message); err != nil {
+		fmt.Printf("❌ Failed to process message for RAG: %v\n", err)
+	}
+
 	// Handle mentions
 	if b.isBotMentioned(m) {
 		b.handleMentionMessage(s, m)
@@ -387,4 +396,14 @@ func (b *Bot) SendTyping(channelID string) error {
 // UpdateStatus implements the DiscordService interface
 func (b *Bot) UpdateStatus(activity string) error {
 	return b.session.UpdateGameStatus(0, activity)
+}
+
+// GetSession returns the Discord session
+func (b *Bot) GetSession() *discordgo.Session {
+	return b.session
+}
+
+// SetRAGService updates the RAG service reference
+func (b *Bot) SetRAGService(ragService *rag.Service) {
+	b.ragService = ragService
 }

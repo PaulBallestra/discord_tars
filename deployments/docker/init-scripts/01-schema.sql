@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS message_embeddings (
     model_name VARCHAR(100) DEFAULT 'text-embedding-3-small',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(message_id)
+    CONSTRAINT uni_message_embeddings_message_id UNIQUE (message_id) -- Explicitly named constraint
 );
 
 -- Create conversation_context table for tracking conversations

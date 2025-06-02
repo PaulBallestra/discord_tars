@@ -23,24 +23,25 @@ func main() {
 		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
 
-	// Initialize database
-	db, err := postgres.NewConnection(cfg.Database)
+	// Initialize GORM database
+	db, err := postgres.NewGormConnection(cfg.Database)
 	if err != nil {
 		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 	defer db.Close()
-	log.Println("✅ Database connected")
+	log.Println("✅ Database connected with GORM")
 
 	// Initialize repositories
 	msgRepo := repository.NewMessageRepository(db)
 
-	// Initialize services
+	// Initialize AI service
 	aiSvc := openaiService.NewService(openaiService.Config{
 		APIKey: cfg.OpenAI.APIKey,
 		Model:  cfg.OpenAI.Model,
 	})
 
-	ragSvc := ragService.NewService(aiSvc, msgRepo)
+	// Initialize RAG service without session first (we'll update it after bot creation)
+	ragSvc := ragService.NewService(aiSvc, msgRepo, nil)
 
 	// Initialize Discord bot with RAG capability
 	bot, err := discordService.NewBot(discordService.BotConfig{
@@ -50,6 +51,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ Failed to create bot: %v", err)
 	}
+
+	// Get Discord session from bot and update RAG service
+	discordSession := bot.GetSession()
+	ragSvc = ragService.NewService(aiSvc, msgRepo, discordSession)
+	bot.SetRAGService(ragSvc)
 
 	// Start bot
 	if err := bot.Start(); err != nil {
