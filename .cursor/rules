@@ -1,0 +1,58 @@
+# Discord RAG Agent - Cursor AI Rules
+
+# Project Context
+This is a scalable Discord RAG bot written in Go that provides voice interaction,
+real-time server analysis, and AI-powered conversations using OpenAI APIs.
+
+# Code Style & Standards
+- Use Go 1.24+ features and idioms
+- Follow effective Go guidelines
+- Prefer composition over inheritance
+- Use interfaces for testability
+- Implement proper error handling with wrapped errors
+- Use structured logging (zerolog)
+- Write tests for all public functions
+
+# Architecture Patterns
+- Microservices with gRPC communication
+- Repository pattern for data access
+- Dependency injection using interfaces
+- Clean architecture principles
+- Service layer separation
+
+# Specific Guidelines
+- Discord API calls must include rate limit handling
+- All OpenAI API calls must include cost tracking metrics
+- Voice processing must be async with proper cleanup
+- Database operations must use transactions where appropriate
+- Configuration via environment variables with validation
+- All services must expose health check endpoints
+- Include Prometheus metrics for all critical operations
+
+# File Organization
+- Keep handlers thin, business logic in services
+- Use internal/ for private packages
+- Export minimal public APIs in pkg/
+- Group related functionality in modules
+- Separate concerns: bot logic, AI processing, data storage
+
+# Testing Requirements
+- Unit tests for business logic
+- Integration tests for external APIs
+- Mock Discord and OpenAI clients for testing
+- Table-driven tests where applicable
+- Test error conditions and edge cases
+
+# Performance Considerations
+- Use connection pooling for database and Redis
+- Implement circuit breakers for external APIs
+- Cache frequently accessed data
+- Use streaming for large data processing
+- Monitor and optimize memory usage for voice processing
+
+# Security
+- Validate all user inputs
+- Use secure defaults for configuration
+- Implement proper authentication for internal APIs
+- Log security events
+- Regular dependency updates
