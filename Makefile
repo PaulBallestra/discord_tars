@@ -229,11 +229,11 @@ db-status: ## Show migration status
 
 ##@ Docker & Infrastructure
 .PHONY: dev-infra
-dev-infra: ## Start development infrastructure (DB, Redis, Monitoring)
-	@echo "🏗️ Starting development infrastructure..."
-	@docker-compose -f $(DOCKER_COMPOSE_FILE) up -d postgres redis prometheus grafana jaeger loki
+dev-infra:
+	@echo "🏗️ Starting development infrastructure..." 
+	docker-compose -f deployments/docker/docker-compose.dev.yml up -d
 	@echo "⏳ Waiting for services to be ready..."
-	@sleep 15
+	@sleep 10
 	@echo ""
 	@echo "✅ Development infrastructure started!"
 	@echo "📊 Access points:"
@@ -244,6 +244,12 @@ dev-infra: ## Start development infrastructure (DB, Redis, Monitoring)
 	@echo "   - Redis:      localhost:6379"
 	@echo ""
 	@echo "🗄️ Database initialized with pgvector and T.A.R.S schema"
+
+.PHONY: dev-infra-down
+dev-infra-down:
+	@echo "🛑 Stopping development infrastructure..."
+	docker-compose -f deployments/docker/docker-compose.dev.yml down -v
+	@echo "✅ Development infrastructure stopped!"
 
 .PHONY: dev
 dev: dev-infra build-bot ## Start full development environment
