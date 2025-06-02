@@ -26,6 +26,7 @@ type OpenAIConfig struct {
 	APIKey         string
 	Model          string
 	EmbeddingModel string
+	TTSModel       string // Added for TTS
 }
 
 type DatabaseConfig struct {
@@ -70,6 +71,7 @@ func LoadConfig() (*Config, error) {
 			APIKey:         os.Getenv("OPENAI_API_KEY"),
 			Model:          getEnvOrDefault("OPENAI_MODEL", "gpt-4o-mini"),
 			EmbeddingModel: getEnvOrDefault("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+			TTSModel:       getEnvOrDefault("OPENAI_TTS_MODEL", "tts-1"), // Added for TTS
 		},
 		Database: DatabaseConfig{
 			Host:     getEnvOrDefault("POSTGRES_HOST", "localhost"),

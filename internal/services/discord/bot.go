@@ -9,16 +9,18 @@ import (
 
 	"discord-tars/internal/interfaces"
 	"discord-tars/internal/services/rag"
+	"discord-tars/internal/services/voice"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 type Bot struct {
-	session    *discordgo.Session
-	aiService  interfaces.AIService
-	ragService *rag.Service
-	config     BotConfig
-	commands   []*discordgo.ApplicationCommand
+	session      *discordgo.Session
+	aiService    interfaces.AIService
+	ragService   *rag.Service
+	voiceService *voice.Service
+	config       BotConfig
+	commands     []*discordgo.ApplicationCommand
 }
 
 type BotConfig struct {
@@ -26,18 +28,19 @@ type BotConfig struct {
 	GuildID string
 }
 
-func NewBot(config BotConfig, aiService interfaces.AIService, ragService *rag.Service) (*Bot, error) {
+func NewBot(config BotConfig, aiService interfaces.AIService, ragService *rag.Service, voiceService *voice.Service) (*Bot, error) {
 	session, err := discordgo.New("Bot " + config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
 	bot := &Bot{
-		session:    session,
-		aiService:  aiService,
-		ragService: ragService,
-		config:     config,
-		commands:   make([]*discordgo.ApplicationCommand, 0),
+		session:      session,
+		aiService:    aiService,
+		ragService:   ragService,
+		voiceService: voiceService, // Added
+		config:       config,
+		commands:     make([]*discordgo.ApplicationCommand, 0),
 	}
 
 	bot.setupHandlers()
@@ -53,7 +56,7 @@ func (b *Bot) setupHandlers() {
 }
 
 func (b *Bot) setupIntents() {
-	b.session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
+	b.session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuildVoiceStates // Added voice states
 }
 
 func (b *Bot) Start() error {
@@ -79,6 +82,11 @@ func (b *Bot) Stop() error {
 		}
 	}
 
+	// Disconnect from all voice channels
+	if b.voiceService != nil {
+		b.voiceService.DisconnectVoice(b.config.GuildID)
+	}
+
 	return b.session.Close()
 }
 
@@ -90,7 +98,7 @@ func (b *Bot) onReady(s *discordgo.Session, event *discordgo.Ready) {
 		return
 	}
 
-	s.UpdateGameStatus(0, "🤖 T.A.R.S Online | Humor: 75% | Try /ask")
+	s.UpdateGameStatus(0, "🤖 T.A.R.S Online | Humor: 75% | Try /ask or /join")
 }
 
 func (b *Bot) registerCommands() error {
@@ -136,6 +144,10 @@ func (b *Bot) registerCommands() error {
 					MaxValue:    100,
 				},
 			},
+		},
+		{
+			Name:        "join",
+			Description: "Make T.A.R.S join your voice channel",
 		},
 	}
 
@@ -213,6 +225,8 @@ func (b *Bot) onSlashCommand(s *discordgo.Session, i *discordgo.InteractionCreat
 		b.handleHelpCommand(s, i)
 	case "personality":
 		b.handlePersonalityCommand(s, i)
+	case "join":
+		b.handleJoinCommand(s, i)
 	default:
 		log.Printf("❌ Unknown command: %s", commandName)
 	}
@@ -274,7 +288,8 @@ func (b *Bot) handleHelpCommand(s *discordgo.Session, i *discordgo.InteractionCr
 		"`/ping` - Test bot responsiveness and latency\n" +
 		"`/ask <question>` - Ask me anything (powered by AI)\n" +
 		"`/help` - Show this help message\n" +
-		"`/personality [humor] [honesty]` - Adjust my personality settings\n\n" +
+		"`/personality [humor] [honesty]` - Adjust my personality settings\n" +
+		"`/join` - Make me join your voice channel\n\n" +
 		"**Direct Interaction:**\n" +
 		"• Mention me (@T.A.R.S) to chat naturally\n" +
 		"• Simple greetings like \"hello\" work too\n" +
@@ -335,6 +350,80 @@ func (b *Bot) handlePersonalityCommand(s *discordgo.Session, i *discordgo.Intera
 		Data: &discordgo.InteractionResponseData{
 			Content: response,
 		},
+	})
+}
+
+func (b *Bot) handleJoinCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Get user’s voice state
+	guildID := i.GuildID
+	userID := i.Member.User.ID
+	var voiceChannelID string
+
+	// Find user’s voice channel
+	guild, err := s.State.Guild(guildID)
+	if err != nil {
+		log.Printf("❌ Failed to get guild: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "🔧 Failed to find server info. Please try again.",
+			},
+		})
+		return
+	}
+
+	for _, vs := range guild.VoiceStates {
+		if vs.UserID == userID {
+			voiceChannelID = vs.ChannelID
+			break
+		}
+	}
+
+	if voiceChannelID == "" {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "🎙️ You need to be in a voice channel to use this command!",
+			},
+		})
+		return
+	}
+
+	// Defer response to avoid timeout
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+	})
+	if err != nil {
+		log.Printf("❌ Failed to defer interaction: %v", err)
+		return
+	}
+
+	// Join voice channel
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	vc, err := b.voiceService.JoinVoiceChannel(ctx, s, guildID, voiceChannelID)
+	if err != nil {
+		log.Printf("❌ Failed to join voice channel: %v", err)
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: func() *string { s := "🔧 Failed to join voice channel. Please try again."; return &s }(),
+		})
+		return
+	}
+
+	// Speak welcome message
+	err = b.voiceService.SpeakText(ctx, vc, "T.A.R.S has entered the channel. Humor level: 75 percent. Ready to assist!")
+	if err != nil {
+		log.Printf("❌ Failed to speak: %v", err)
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: func() *string { s := "🔧 Joined channel but failed to speak. Check logs for details."; return &s }(),
+		})
+		return
+	}
+
+	// Send success message
+	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+		Content: func() *string { s := "🎙️ T.A.R.S has joined your voice channel!"; return &s }(),
 	})
 }
 

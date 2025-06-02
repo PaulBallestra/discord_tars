@@ -12,6 +12,7 @@ import (
 	discordService "discord-tars/internal/services/discord"
 	openaiService "discord-tars/internal/services/openai"
 	ragService "discord-tars/internal/services/rag"
+	voiceService "discord-tars/internal/services/voice"
 )
 
 func main() {
@@ -48,11 +49,17 @@ func main() {
 		Model:  cfg.OpenAI.Model,
 	})
 
+	// Initialize voice service
+	voiceSvc := voiceService.NewService(voiceService.Config{
+		OpenAIAPIKey: cfg.OpenAI.APIKey,
+		TTSModel:     cfg.OpenAI.TTSModel,
+	})
+
 	// Initialize Discord bot
 	bot, err := discordService.NewBot(discordService.BotConfig{
 		Token:   cfg.Discord.Token,
 		GuildID: cfg.Discord.GuildID,
-	}, aiSvc, nil)
+	}, aiSvc, nil, voiceSvc)
 	if err != nil {
 		log.Fatalf("❌ Failed to create bot: %v", err)
 	}
@@ -67,7 +74,7 @@ func main() {
 	}
 	defer bot.Stop()
 
-	log.Println("🤖 T.A.R.S is now online with RAG capabilities!")
+	log.Println("🤖 T.A.R.S is now online with RAG and voice capabilities!")
 
 	// Wait for interrupt signal
 	stop := make(chan os.Signal, 1)
