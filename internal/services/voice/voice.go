@@ -3,7 +3,6 @@ package voice
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -17,7 +16,7 @@ import (
 
 const (
 	channels  = 2                          // Stereo audio
-	frameRate = 48000                      // 48kHz sample rate
+	frameRate = 24000                      // 24kHz sample rate
 	frameSize = 960                        // 20ms frame size
 	maxBytes  = (frameSize * 2 * channels) // Max bytes per frame
 )
@@ -57,8 +56,8 @@ func (s *Service) JoinVoiceChannel(ctx context.Context, session *discordgo.Sessi
 		vc.Close()
 	}
 
-	// Connect to voice channel
-	vc, err := session.ChannelVoiceJoin(guildID, channelID, false, true)
+	// Connect to voice channel while listening to the channel
+	vc, err := session.ChannelVoiceJoin(guildID, channelID, false, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to join voice channel: %w", err)
 	}
@@ -97,7 +96,7 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 	pcm := make([]int16, 0, frameSize*channels)
 	byteBuffer := make([]byte, frameSize*channels*2) // 2 bytes per sample (int16)
 	for {
-		n, err := decoder.Read(byteBuffer)
+		_, err := decoder.Read(byteBuffer)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -106,12 +105,14 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		}
 
 		// Convert bytes to int16 (little-endian, assuming PCM is 16-bit)
-		for i := 0; i < n-1; i += 2 {
-			var sample int16
-			sample = int16(binary.LittleEndian.Uint16(byteBuffer[i : i+2]))
-			pcm = append(pcm, sample)
+
+		for i := 0; i < len(pcm)-frameSize*channels; i += frameSize * channels {
+			sample := pcm[i : i+frameSize*channels]
+			pcm = append(pcm, sample...)
 		}
 	}
+
+	log.Printf("📢 Decoded PCM: %d samples (expected multiple of %d for %dms frames)", len(pcm), frameSize*channels, frameSize*1000/frameRate)
 
 	// Initialize Opus encoder
 	enc, err := opus.NewEncoder(frameRate, channels, opus.AppAudio)
@@ -130,11 +131,21 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		}
 		sample := pcm[i:end]
 
+		// Log sample size
+		log.Printf("📢 Encoding frame: %d samples (expected %d)", len(sample), frameSize*channels)
+
+		// Pad sample if too short
+		if len(sample) < frameSize*channels {
+			log.Printf("⚠️ Padding frame with %d zeros to reach %d samples", frameSize*channels-len(sample), frameSize*channels)
+			padding := make([]int16, frameSize*channels-len(sample))
+			sample = append(sample, padding...)
+		}
+
 		// Encode to Opus
 		opusData := make([]byte, maxBytes)
 		n, err := enc.Encode(sample, opusData)
 		if err != nil {
-			log.Printf("⚠️ Error encoding audio: %v", err)
+			log.Printf("⚠️ Error encoding audio: %v (sample size: %d)", err, len(sample))
 			return fmt.Errorf("error encoding audio: %w", err)
 		}
 		opusData = opusData[:n]
@@ -142,6 +153,7 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		// Send Opus frames
 		select {
 		case vc.OpusSend <- opusData:
+			log.Printf("📢 Sent Opus frame: %d bytes", n)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
