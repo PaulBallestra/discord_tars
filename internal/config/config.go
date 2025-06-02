@@ -32,7 +32,7 @@ type DatabaseConfig struct {
 	Port     int    `mapstructure:"port"`
 	User     string `mapstructure:"user"`
 	Password string `mapstructure:"password"`
-	DB       string `mapstructure:"db"`
+	Database string `mapstructure:"database"`
 	SSLMode  string `mapstructure:"ssl_mode"`
 }
 
@@ -48,86 +48,127 @@ type AppConfig struct {
 	HTTPPort    int    `mapstructure:"http_port"`
 	GRPCPort    int    `mapstructure:"grpc_port"`
 	MetricsPort int    `mapstructure:"metrics_port"`
+	Environment string `mapstructure:"environment"`
 }
 
 type MonitoringConfig struct {
 	JaegerEndpoint string `mapstructure:"jaeger_endpoint"`
 }
 
-func Load() (*Config, error) {
+// LoadConfig loads configuration from environment variables and .env file
+func LoadConfig() (*Config, error) {
+	// Set default values
+	viper.SetDefault("discord.token", "")
+	viper.SetDefault("discord.guild_id", "")
+	viper.SetDefault("openai.api_key", "")
+	viper.SetDefault("openai.model", "gpt-4")
+	viper.SetDefault("openai.embedding_model", "text-embedding-3-large")
+	viper.SetDefault("database.host", "localhost")
+	viper.SetDefault("database.port", 5432)
+	viper.SetDefault("database.user", "ragbot")
+	viper.SetDefault("database.password", "")
+	viper.SetDefault("database.database", "discord_rag")
+	viper.SetDefault("database.ssl_mode", "disable")
+	viper.SetDefault("redis.host", "localhost")
+	viper.SetDefault("redis.port", 6379)
+	viper.SetDefault("redis.password", "")
+	viper.SetDefault("redis.db", 0)
+	viper.SetDefault("app.log_level", "info")
+	viper.SetDefault("app.http_port", 8080)
+	viper.SetDefault("app.grpc_port", 8081)
+	viper.SetDefault("app.metrics_port", 9090)
+	viper.SetDefault("app.environment", "development")
+	viper.SetDefault("monitoring.jaeger_endpoint", "http://localhost:14268/api/traces")
+
+	// Configure viper
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./")
-	viper.AddConfigPath("../")
 
-	// Environment variables
-	viper.SetEnvPrefix("")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	// Enable reading from environment variables
 	viper.AutomaticEnv()
 
-	// Set defaults
-	setDefaults()
+	// Replace dots and dashes in env var names
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
+	// Map environment variables to config structure
+	viper.BindEnv("discord.token", "DISCORD_TOKEN")
+	viper.BindEnv("discord.guild_id", "DISCORD_GUILD_ID")
+	viper.BindEnv("openai.api_key", "OPENAI_API_KEY")
+	viper.BindEnv("openai.model", "OPENAI_MODEL")
+	viper.BindEnv("openai.embedding_model", "OPENAI_EMBEDDING_MODEL")
+	viper.BindEnv("database.host", "POSTGRES_HOST")
+	viper.BindEnv("database.port", "POSTGRES_PORT")
+	viper.BindEnv("database.user", "POSTGRES_USER")
+	viper.BindEnv("database.password", "POSTGRES_PASSWORD")
+	viper.BindEnv("database.database", "POSTGRES_DB")
+	viper.BindEnv("database.ssl_mode", "POSTGRES_SSL_MODE")
+	viper.BindEnv("redis.host", "REDIS_HOST")
+	viper.BindEnv("redis.port", "REDIS_PORT")
+	viper.BindEnv("redis.password", "REDIS_PASSWORD")
+	viper.BindEnv("redis.db", "REDIS_DB")
+	viper.BindEnv("app.log_level", "LOG_LEVEL")
+	viper.BindEnv("app.http_port", "HTTP_PORT")
+	viper.BindEnv("app.grpc_port", "GRPC_PORT")
+	viper.BindEnv("app.metrics_port", "METRICS_PORT")
+	viper.BindEnv("app.environment", "ENVIRONMENT")
+	viper.BindEnv("monitoring.jaeger_endpoint", "JAEGER_ENDPOINT")
+
+	// Try to read .env file (it's okay if it doesn't exist)
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
 	}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	var config Config
+	if err := viper.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("unable to decode config: %w", err)
 	}
 
-	return &cfg, nil
+	// Validate required fields
+	if err := validateConfig(&config); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return &config, nil
 }
 
-func setDefaults() {
-	// Discord defaults
-	viper.SetDefault("discord.token", "")
-	viper.SetDefault("discord.guild_id", "")
+// validateConfig validates that required configuration values are set
+func validateConfig(config *Config) error {
+	if config.Discord.Token == "" {
+		return fmt.Errorf("DISCORD_TOKEN is required")
+	}
 
-	// OpenAI defaults
-	viper.SetDefault("openai.api_key", "")
-	viper.SetDefault("openai.model", "gpt-4")
-	viper.SetDefault("openai.embedding_model", "text-embedding-3-large")
+	if config.OpenAI.APIKey == "" {
+		return fmt.Errorf("OPENAI_API_KEY is required")
+	}
 
-	// Database defaults
-	viper.SetDefault("database.host", "localhost")
-	viper.SetDefault("database.port", 5432)
-	viper.SetDefault("database.user", "ragbot")
-	viper.SetDefault("database.password", "")
-	viper.SetDefault("database.db", "discord_rag")
-	viper.SetDefault("database.ssl_mode", "disable")
+	if config.Database.Password == "" {
+		return fmt.Errorf("POSTGRES_PASSWORD is required")
+	}
 
-	// Redis defaults
-	viper.SetDefault("redis.host", "localhost")
-	viper.SetDefault("redis.port", 6379)
-	viper.SetDefault("redis.password", "")
-	viper.SetDefault("redis.db", 0)
-
-	// App defaults
-	viper.SetDefault("app.log_level", "info")
-	viper.SetDefault("app.http_port", 8080)
-	viper.SetDefault("app.grpc_port", 8081)
-	viper.SetDefault("app.metrics_port", 9090)
-
-	// Monitoring defaults
-	viper.SetDefault("monitoring.jaeger_endpoint", "http://localhost:14268/api/traces")
+	return nil
 }
 
-func (c *Config) GetDatabaseURL() string {
+// GetDatabaseURL returns a formatted database connection URL
+func (c *DatabaseConfig) GetDatabaseURL() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.Database.User,
-		c.Database.Password,
-		c.Database.Host,
-		c.Database.Port,
-		c.Database.DB,
-		c.Database.SSLMode,
-	)
+		c.User, c.Password, c.Host, c.Port, c.Database, c.SSLMode)
 }
 
-func (c *Config) GetRedisURL() string {
-	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
+// GetRedisAddr returns formatted Redis address
+func (c *RedisConfig) GetRedisAddr() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+// IsProduction returns true if running in production environment
+func (c *AppConfig) IsProduction() bool {
+	return strings.ToLower(c.Environment) == "production"
+}
+
+// IsDevelopment returns true if running in development environment
+func (c *AppConfig) IsDevelopment() bool {
+	return strings.ToLower(c.Environment) == "development"
 }
