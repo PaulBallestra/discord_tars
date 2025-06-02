@@ -30,6 +30,8 @@ MIGRATE_TOOL := $(shell go env GOPATH)/bin/migrate
 
 # Build flags
 LDFLAGS := -ldflags "-X main.Version=$(shell git describe --tags --always --dirty) -X main.BuildTime=$(shell date -u '+%Y-%m-%d_%H:%M:%S')"
+CGO_CFLAGS := $(shell pkg-config --cflags opusfile || echo "-I/opt/homebrew/Cellar/opusfile/0.12_1/include")
+CGO_LDFLAGS := $(shell pkg-config --libs opusfile || echo "-L/opt/homebrew/Cellar/opusfile/0.12_1/lib -lopusfile -lopus")
 
 # Default target
 .PHONY: help
@@ -89,30 +91,30 @@ build: build-bot build-voice-processor build-rag-indexer ## Build all binaries
 build-bot: ## Build Discord bot binary
 	@echo "🔨 Building Discord bot..."
 	@mkdir -p $(BINARY_PATH)
-	@$(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
 	@echo "✅ Bot binary built: $(BOT_BINARY)"
 
 .PHONY: build-voice-processor
 build-voice-processor: ## Build voice processor binary
 	@echo "🔨 Building voice processor..."
 	@mkdir -p $(BINARY_PATH)
-	@$(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
 	@echo "✅ Voice processor binary built: $(VOICE_PROCESSOR_BINARY)"
 
 .PHONY: build-rag-indexer
 build-rag-indexer: ## Build RAG indexer binary
 	@echo "🔨 Building RAG indexer..."
 	@mkdir -p $(BINARY_PATH)
-	@$(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
 	@echo "✅ RAG indexer binary built: $(RAG_INDEXER_BINARY)"
 
 .PHONY: build-linux
 build-linux: ## Build binaries for Linux
 	@echo "🔨 Building for Linux..."
 	@mkdir -p $(BINARY_PATH)/linux
-	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
-	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
-	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
+	@CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" CGO_LDFLAGS="$(CGO_LDFLAGS)" GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
 	@echo "✅ Linux binaries built"
 
 ##@ Testing
