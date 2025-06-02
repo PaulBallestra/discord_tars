@@ -25,18 +25,22 @@ BOT_BINARY := $(BINARY_PATH)/bot
 VOICE_PROCESSOR_BINARY := $(BINARY_PATH)/voice-processor
 RAG_INDEXER_BINARY := $(BINARY_PATH)/rag-indexer
 
+# Database tool
+MIGRATE_TOOL := $(shell go env GOPATH)/bin/migrate
+
 # Build flags
 LDFLAGS := -ldflags "-X main.Version=$(shell git describe --tags --always --dirty) -X main.BuildTime=$(shell date -u '+%Y-%m-%d_%H:%M:%S')"
 
 # Default target
 .PHONY: help
 help: ## Show this help message
-	@echo "$(PROJECT_NAME) - Discord RAG Agent"
+	@echo "$(PROJECT_NAME) - TARS Agent"
 	@echo "Go version: $(GO_VERSION)"
 	@echo ""
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
+##@ Setup & Dependencies
 .PHONY: setup
 setup: deps ## Initial project setup
 	@echo "🚀 Setting up $(PROJECT_NAME)..."
@@ -59,22 +63,21 @@ setup: deps ## Initial project setup
 .PHONY: deps
 deps: ## Download dependencies
 	@echo "📦 Downloading dependencies..."
-	$(GOMOD) download
-	$(GOMOD) tidy
+	@$(GOMOD) download
+	@$(GOMOD) tidy
 	@echo "✅ Dependencies downloaded"
-
 
 .PHONY: deps-update
 deps-update: ## Update dependencies
 	@echo "🔄 Updating dependencies..."
-	$(GOGET) -u ./...
-	$(GOMOD) tidy
+	@$(GOGET) -u ./...
+	@$(GOMOD) tidy
 	@echo "✅ Dependencies updated"
 
 .PHONY: test-config
 test-config: ## Test configuration loading
 	@echo "🔧 Testing configuration..."
-	$(GOBUILD) -o $(BINARY_PATH)/config-test ./cmd/bot
+	@$(GOBUILD) -o $(BINARY_PATH)/config-test ./cmd/bot
 	@./$(BINARY_PATH)/config-test || (echo "❌ Config test failed"; exit 1)
 	@echo "✅ Configuration test passed"
 
@@ -86,55 +89,55 @@ build: build-bot build-voice-processor build-rag-indexer ## Build all binaries
 build-bot: ## Build Discord bot binary
 	@echo "🔨 Building Discord bot..."
 	@mkdir -p $(BINARY_PATH)
-	$(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
+	@$(GOBUILD) $(LDFLAGS) -o $(BOT_BINARY) ./cmd/bot
 	@echo "✅ Bot binary built: $(BOT_BINARY)"
 
 .PHONY: build-voice-processor
 build-voice-processor: ## Build voice processor binary
 	@echo "🔨 Building voice processor..."
 	@mkdir -p $(BINARY_PATH)
-	$(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
+	@$(GOBUILD) $(LDFLAGS) -o $(VOICE_PROCESSOR_BINARY) ./cmd/voice-processor
 	@echo "✅ Voice processor binary built: $(VOICE_PROCESSOR_BINARY)"
 
 .PHONY: build-rag-indexer
 build-rag-indexer: ## Build RAG indexer binary
 	@echo "🔨 Building RAG indexer..."
 	@mkdir -p $(BINARY_PATH)
-	$(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
+	@$(GOBUILD) $(LDFLAGS) -o $(RAG_INDEXER_BINARY) ./cmd/rag-indexer
 	@echo "✅ RAG indexer binary built: $(RAG_INDEXER_BINARY)"
 
 .PHONY: build-linux
 build-linux: ## Build binaries for Linux
 	@echo "🔨 Building for Linux..."
 	@mkdir -p $(BINARY_PATH)/linux
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/bot ./cmd/bot
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/voice-processor ./cmd/voice-processor
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)/linux/rag-indexer ./cmd/rag-indexer
 	@echo "✅ Linux binaries built"
 
 ##@ Testing
 .PHONY: test
 test: ## Run tests
 	@echo "🧪 Running tests..."
-	$(GOTEST) -v -race -coverprofile=coverage.out ./...
+	@$(GOTEST) -v -race -coverprofile=coverage.out ./...
 	@echo "✅ Tests completed"
 
 .PHONY: test-integration
 test-integration: ## Run integration tests
 	@echo "🧪 Running integration tests..."
-	$(GOTEST) -v -tags=integration ./tests/integration/...
+	@$(GOTEST) -v -tags=integration ./tests/integration/...
 	@echo "✅ Integration tests completed"
 
 .PHONY: test-load
 test-load: ## Run load tests
 	@echo "🧪 Running load tests..."
-	$(GOTEST) -v -tags=load ./tests/load/...
+	@$(GOTEST) -v -tags=load ./tests/load/...
 	@echo "✅ Load tests completed"
 
 .PHONY: test-coverage
 test-coverage: test ## Generate test coverage report
 	@echo "📊 Generating coverage report..."
-	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@$(GOCMD) tool cover -html=coverage.out -o coverage.html
 	@echo "✅ Coverage report generated: coverage.html"
 
 .PHONY: test-watch
@@ -148,13 +151,13 @@ test-watch: ## Watch and run tests on file changes
 lint: ## Run linter
 	@echo "🔍 Running linter..."
 	@which $(GOLINT) > /dev/null || (echo "Installing golangci-lint..." && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin)
-	$(GOLINT) run ./...
+	@$(GOLINT) run ./...
 	@echo "✅ Linting completed"
 
 .PHONY: fmt
 fmt: ## Format code
 	@echo "🎨 Formatting code..."
-	$(GOFMT) -s -w .
+	@$(GOFMT) -s -w .
 	@echo "✅ Code formatted"
 
 .PHONY: fmt-check
@@ -166,48 +169,71 @@ fmt-check: ## Check code formatting
 .PHONY: vet
 vet: ## Run go vet
 	@echo "🔍 Running go vet..."
-	$(GOCMD) vet ./...
+	@$(GOCMD) vet ./...
 	@echo "✅ Vet completed"
 
 .PHONY: check
 check: fmt-check vet lint test ## Run all checks (format, vet, lint, test)
 
 ##@ Database
+.PHONY: install-migrate
+install-migrate: ## Install migrate tool
+	@echo "📦 Installing migrate tool..."
+	@go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+	@echo "✅ Migrate tool installed at $(MIGRATE_TOOL)"
+
 .PHONY: db-migrate-up
 db-migrate-up: ## Run database migrations up
 	@echo "⬆️ Running database migrations..."
-	@which migrate > /dev/null || (echo "Installing migrate..." && go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest)
-	$(migrate) -path migrations -database "$(shell grep POSTGRES_URL .env | cut -d '=' -f2)" up
+	@if [ ! -f "$(MIGRATE_TOOL)" ]; then \
+        echo "Installing migrate tool..."; \
+        $(MAKE) install-migrate; \
+    fi
+	@echo "Running migrations..."
+	@$(MIGRATE_TOOL) -path migrations -database "$$POSTGRES_URL" up
 	@echo "✅ Migrations completed"
 
 .PHONY: db-migrate-down
 db-migrate-down: ## Run database migrations down
 	@echo "⬇️ Rolling back database migrations..."
-	$(migrate) -path migrations -database "$(shell grep POSTGRES_URL .env | cut -d '=' -f2)" down
+	@if [ ! -f "$(MIGRATE_TOOL)" ]; then \
+        $(MAKE) install-migrate; \
+    fi
+	@$(MIGRATE_TOOL) -path migrations -database "$$POSTGRES_URL" down
 	@echo "✅ Migrations rolled back"
 
 .PHONY: db-migrate-create
 db-migrate-create: ## Create new migration (usage: make db-migrate-create NAME=migration_name)
 	@if [ -z "$(NAME)" ]; then echo "❌ NAME is required. Usage: make db-migrate-create NAME=migration_name"; exit 1; fi
 	@echo "📝 Creating migration: $(NAME)..."
-	$(migrate) create -ext sql -dir migrations $(NAME)
+	@if [ ! -f "$(MIGRATE_TOOL)" ]; then \
+        $(MAKE) install-migrate; \
+    fi
+	@$(MIGRATE_TOOL) create -ext sql -dir migrations $(NAME)
 	@echo "✅ Migration created"
 
 .PHONY: db-reset
 db-reset: ## Reset database (down + up)
 	@echo "🔄 Resetting database..."
-	$(MAKE) db-migrate-down || true
-	$(MAKE) db-migrate-up
+	@$(MAKE) db-migrate-down || true
+	@$(MAKE) db-migrate-up
 	@echo "✅ Database reset completed"
+
+.PHONY: db-status
+db-status: ## Show migration status
+	@echo "📊 Checking migration status..."
+	@if [ ! -f "$(MIGRATE_TOOL)" ]; then \
+        $(MAKE) install-migrate; \
+    fi
+	@$(MIGRATE_TOOL) -path migrations -database "$$POSTGRES_URL" version
 
 ##@ Docker & Infrastructure
 .PHONY: dev-infra
 dev-infra: ## Start development infrastructure (DB, Redis, Monitoring)
 	@echo "🏗️ Starting development infrastructure..."
-	$(docker-compose) -f $(DOCKER_COMPOSE_FILE) up -d postgres redis prometheus grafana jaeger loki
+	@docker-compose -f $(DOCKER_COMPOSE_FILE) up -d postgres redis prometheus grafana jaeger loki
 	@echo "⏳ Waiting for services to be ready..."
-	@sleep 10
-	$(MAKE) db-migrate-up
+	@sleep 15
 	@echo ""
 	@echo "✅ Development infrastructure started!"
 	@echo "📊 Access points:"
@@ -216,6 +242,8 @@ dev-infra: ## Start development infrastructure (DB, Redis, Monitoring)
 	@echo "   - Jaeger:     http://localhost:16686"
 	@echo "   - PostgreSQL: localhost:5432"
 	@echo "   - Redis:      localhost:6379"
+	@echo ""
+	@echo "🗄️ Database initialized with pgvector and T.A.R.S schema"
 
 .PHONY: dev
 dev: dev-infra build-bot ## Start full development environment
@@ -250,13 +278,13 @@ docker-down: ## Stop Docker Compose services
 
 .PHONY: docker-logs
 docker-logs: ## Show Docker Compose logs
-	$(docker-compose) -f $(DOCKER_COMPOSE_FILE) logs -f
+	@docker-compose -f $(DOCKER_COMPOSE_FILE) logs -f
 
 .PHONY: docker-clean
 docker-clean: ## Clean Docker resources
 	@echo "🧹 Cleaning Docker resources..."
-	$(docker-compose) -f $(DOCKER_COMPOSE_FILE) down -v
-	$(docker) system prune -af
+	@docker-compose -f $(DOCKER_COMPOSE_FILE) down -v
+	@docker system prune -af
 	@echo "✅ Docker resources cleaned"
 
 ##@ Generation & Protobuf
@@ -264,38 +292,43 @@ docker-clean: ## Clean Docker resources
 proto: ## Generate protobuf files
 	@echo "🔧 Generating protobuf files..."
 	@which protoc > /dev/null || (echo "❌ protoc is required. Install Protocol Buffers compiler"; exit 1)
-	$(protoc) --go_out=. --go_opt=paths=source_relative \
-		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
-		api/proto/*.proto
+	@protoc --go_out=. --go_opt=paths=source_relative \
+        --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+        api/proto/*.proto
 	@echo "✅ Protobuf files generated"
 
 .PHONY: mocks
 mocks: ## Generate mocks
 	@echo "🎭 Generating mocks..."
 	@which mockgen > /dev/null || (echo "Installing mockgen..." && go install github.com/golang/mock/mockgen@latest)
-	$(GO) generate ./...
+	@$(GOCMD) generate ./...
 	@echo "✅ Mocks generated"
+
+.PHONY: seed-data
+seed-data: ## Seed development data
+	@echo "🌱 Seeding development data..."
+	@$(GOCMD) run scripts/seed/main.go
+	@echo "✅ Data seeded"
 
 ##@ Deployment
 .PHONY: deploy-staging
 deploy-staging: ## Deploy to staging
 	@echo "🚀 Deploying to staging..."
-	$(kubectl) apply -f deployments/k8s/staging/
+	@kubectl apply -f deployments/k8s/staging/
 	@echo "✅ Deployed to staging"
 
 .PHONY: deploy-prod
 deploy-prod: ## Deploy to production
 	@echo "🚀 Deploying to production..."
 	@echo "⚠️  Are you sure? This will deploy to production! (Press Ctrl+C to cancel)"
-	@read -p "Type 'yes' to continue: " confirm && [ "$$confirm" = "yes" ]
-	$(kubectl) apply -f deployments/k8s/production/
+	@read -p "Type 'yes' to continue: " confirm && [ "$$confirm" = "yes" ] && kubectl apply -f deployments/k8s/production/
 	@echo "✅ Deployed to production"
 
 ##@ Utilities
 .PHONY: clean
 clean: ## Clean build artifacts
 	@echo "🧹 Cleaning build artifacts..."
-	$(GOCLEAN)
+	@$(GOCLEAN)
 	@rm -rf $(BINARY_PATH)
 	@rm -f coverage.out coverage.html
 	@echo "✅ Cleaned"
@@ -310,10 +343,10 @@ version: ## Show version information
 .PHONY: install-tools
 install-tools: ## Install development tools
 	@echo "🔧 Installing development tools..."
-	$(GO) install github.com/cosmtrek/air@latest
-	$(GO) install github.com/golang/mock/mockgen@latest
-	$(GO) install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-	$(curl) -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin
+	@$(GOCMD) install github.com/cosmtrek/air@latest
+	@$(GOCMD) install github.com/golang/mock/mockgen@latest
+	@$(GOCMD) install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin
 	@echo "✅ Development tools installed"
 
 .PHONY: check-env
@@ -321,7 +354,9 @@ check-env: ## Check environment variables
 	@echo "🔍 Checking environment variables..."
 	@echo "DISCORD_TOKEN: $$(if [ -n "$$DISCORD_TOKEN" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
 	@echo "OPENAI_API_KEY: $$(if [ -n "$$OPENAI_API_KEY" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
-	@echo "POSTGRES_PASSWORD: $$(if [ -n "$$POSTGRES_PASSWORD" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
+	@echo "POSTGRES_URL: $$(if [ -n "$$POSTGRES_URL" ]; then echo "✅ Set"; else echo "❌ Missing"; fi)"
+	@echo "POSTGRES_USER: $$POSTGRES_USER"
+	@echo "POSTGRES_DB: $$POSTGRES_DB"
 
 ##@ Quick Start
 .PHONY: quick-start

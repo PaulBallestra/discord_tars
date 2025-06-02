@@ -147,7 +147,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_USER=ragbot
 POSTGRES_PASSWORD=secure_password
-POSTGRES_DB=discord_rag
+POSTGRES_DB=tars_db
 POSTGRES_SSL_MODE=disable
 
 # Redis Configuration

@@ -76,7 +76,7 @@ func LoadConfig() (*Config, error) {
 			Port:     getEnvIntOrDefault("POSTGRES_PORT", 5432),
 			User:     getEnvOrDefault("POSTGRES_USER", "ragbot"),
 			Password: os.Getenv("POSTGRES_PASSWORD"),
-			DBName:   getEnvOrDefault("POSTGRES_DB", "discord_rag"),
+			DBName:   getEnvOrDefault("POSTGRES_DB", "tars_db"),
 			SSLMode:  getEnvOrDefault("POSTGRES_SSL_MODE", "disable"),
 		},
 		App: AppConfig{
