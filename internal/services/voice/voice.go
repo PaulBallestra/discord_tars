@@ -3,10 +3,12 @@ package voice
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/hajimehoshi/go-mp3"
@@ -16,8 +18,8 @@ import (
 
 const (
 	channels  = 2                          // Stereo audio
-	frameRate = 48000                      // Updated to 48kHz for better quality
-	frameSize = 1920                       // 40ms frame size at 48kHz
+	frameRate = 24000                      // Match OpenAI TTS output (24kHz)
+	frameSize = 480                        // 20ms frame size at 24kHz (480 samples per 20ms)
 	maxBytes  = (frameSize * 2 * channels) // Max bytes per frame
 )
 
@@ -54,7 +56,7 @@ func (s *Service) JoinVoiceChannel(ctx context.Context, session *discordgo.Sessi
 		vc.Close()
 	}
 
-	vc, err := session.ChannelVoiceJoin(guildID, channelID, false, false)
+	vc, err := session.ChannelVoiceJoin(guildID, channelID, false, false) // Enable receiving
 	if err != nil {
 		return nil, fmt.Errorf("failed to join voice channel: %w", err)
 	}
@@ -88,6 +90,9 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		return fmt.Errorf("failed to create MP3 decoder: %w", err)
 	}
 
+	// Log sample rate for debugging
+	log.Printf("🎙️ MP3 sample rate: %d Hz", decoder.SampleRate())
+
 	var pcm []int16
 	byteBuffer := make([]byte, maxBytes)
 	for {
@@ -110,13 +115,17 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 			pcm = append(pcm, sample)
 		}
 	}
-	log.Printf("📢 Decoded PCM: %d samples (expected multiple of %d for %dms frames)", len(pcm), frameSize*channels, frameSize*1000/frameRate)
+	log.Printf("📢 Decoded PCM: %d samples (expected multiple of %d for %dms frames)",
+		len(pcm), frameSize*channels, frameSize*1000/frameRate)
 
-	enc, err := opus.NewEncoder(frameRate, channels, opus.AppAudio)
+	enc, err := opus.NewEncoder(frameRate, channels, opus.AppVoIP)
 	if err != nil {
 		return fmt.Errorf("failed to create Opus encoder: %w", err)
 	}
-	enc.SetBitrate(64000) // Set bitrate to 64kbps for better quality
+	enc.SetBitrate(64000)
+	if err := enc.SetInBandFEC(true); err != nil {
+		log.Printf("⚠️ Failed to enable FEC: %v", err)
+	}
 	log.Printf("📢 Using encoder: %d Hz, %d channels, %d kbps", frameRate, channels, 64)
 
 	vc.Speaking(true)
@@ -130,11 +139,9 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		sample := pcm[i:end]
 
 		if len(sample) < frameSize*channels {
-			log.Printf("⚠️ Padding frame with %d zeros", frameSize*channels-len(sample))
 			padding := make([]int16, frameSize*channels-len(sample))
+			log.Printf("⚠️ Padding frame with %d zeros", len(padding))
 			sample = append(sample, padding...)
-		} else if len(sample) > frameSize*channels {
-			sample = sample[:frameSize*channels]
 		}
 
 		opusData := make([]byte, maxBytes)
@@ -151,6 +158,120 @@ func (s *Service) SpeakText(ctx context.Context, vc *discordgo.VoiceConnection, 
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+
+	return nil
+}
+
+// ListenToVoice captures incoming audio, transcribes it using OpenAI Whisper, and returns the text
+func (s *Service) ListenToVoice(ctx context.Context, vc *discordgo.VoiceConnection) (string, error) {
+	log.Printf("🎧 Starting to listen to voice channel")
+
+	var pcmBuffer []int16
+	decoder, err := opus.NewDecoder(frameRate, channels)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Opus decoder: %w", err)
+	}
+
+	// Collect audio for 5 seconds
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case data := <-vc.OpusSend:
+			if data == nil {
+				continue
+			}
+			log.Printf("🎧 Received Opus frame: %d bytes", len(data))
+			pcm := make([]int16, frameSize*channels)
+			n, err := decoder.Decode(data, pcm)
+			if err != nil {
+				log.Printf("⚠️ Error decoding Opus: %v", err)
+				continue
+			}
+			log.Printf("🎧 Decoded %d PCM samples", n)
+			pcmBuffer = append(pcmBuffer, pcm[:n]...)
+		case <-timeout:
+			log.Printf("🎧 Finished collecting audio, total samples: %d", len(pcmBuffer))
+			goto transcription
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
+transcription:
+	if len(pcmBuffer) == 0 {
+		return "", fmt.Errorf("no audio data collected")
+	}
+
+	// Convert PCM to WAV format for Whisper API
+	wavBuffer := new(bytes.Buffer)
+	// Write WAV header
+	err = writeWAVHeader(wavBuffer, len(pcmBuffer), frameRate, channels, 16)
+	if err != nil {
+		return "", fmt.Errorf("failed to write WAV header: %w", err)
+	}
+	// Write PCM data
+	for _, sample := range pcmBuffer {
+		if err := binary.Write(wavBuffer, binary.LittleEndian, sample); err != nil {
+			return "", fmt.Errorf("failed to write PCM data: %w", err)
+		}
+	}
+
+	// Transcribe using OpenAI Whisper
+	req := openai.AudioRequest{
+		Model:    "whisper-1",
+		Reader:   wavBuffer,
+		FilePath: "audio.wav", // FilePath is required by the API, even though we're using Reader
+	}
+	resp, err := s.client.CreateTranscription(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to transcribe audio: %w", err)
+	}
+
+	log.Printf("🎤 Transcribed text: %s", resp.Text)
+	return resp.Text, nil
+}
+
+// writeWAVHeader writes a WAV file header to the buffer
+func writeWAVHeader(w *bytes.Buffer, numSamples, sampleRate, channels, bitsPerSample int) error {
+	dataSize := numSamples * channels * (bitsPerSample / 8)
+	fileSize := 36 + dataSize
+
+	// RIFF header
+	w.Write([]byte("RIFF"))
+	if err := binary.Write(w, binary.LittleEndian, int32(fileSize)); err != nil {
+		return err
+	}
+	w.Write([]byte("WAVE"))
+
+	// fmt chunk
+	w.Write([]byte("fmt "))
+	if err := binary.Write(w, binary.LittleEndian, int32(16)); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int16(1)); err != nil { // PCM format
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int16(channels)); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int32(sampleRate)); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int32(sampleRate*channels*bitsPerSample/8)); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int16(channels*bitsPerSample/8)); err != nil {
+		return err
+	}
+	if err := binary.Write(w, binary.LittleEndian, int16(bitsPerSample)); err != nil {
+		return err
+	}
+
+	// data chunk
+	w.Write([]byte("data"))
+	if err := binary.Write(w, binary.LittleEndian, int32(dataSize)); err != nil {
+		return err
 	}
 
 	return nil
