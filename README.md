@@ -49,6 +49,8 @@ discord-rag-agent/
 │   ├── voice-processor/         # Voice processing microservice
 │   └── rag-indexer/             # RAG indexing microservice
 ├── internal/                    # Private application code
+│   ├── repository/             # Repositories
+│   │   └── postgres/           # Postgres repository
 │   ├── bot/
 │   │   ├── handlers/           # Discord event handlers
 │   │   ├── commands/           # Slash commands
@@ -61,6 +63,7 @@ discord-rag-agent/
 │   │   ├── discord/            # Discord API wrapper
 │   │   ├── openai/             # OpenAI client
 │   │   └── storage/            # Database operations
+│   │   └── rag/                # Rag service
 │   ├── monitoring/             # Metrics, tracing helpers
 │   ├── models/                 # Data structures
 │   └── config/                 # Configuration management

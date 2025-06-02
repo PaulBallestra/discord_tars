@@ -7,8 +7,11 @@ import (
 	"syscall"
 
 	"discord-tars/internal/config"
+	"discord-tars/internal/repository"
+	"discord-tars/internal/repository/postgres"
 	discordService "discord-tars/internal/services/discord"
 	openaiService "discord-tars/internal/services/openai"
+	ragService "discord-tars/internal/services/rag"
 )
 
 func main() {
@@ -20,17 +23,30 @@ func main() {
 		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
 
+	// Initialize database
+	db, err := postgres.NewConnection(cfg.Database)
+	if err != nil {
+		log.Fatalf("❌ Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+	log.Println("✅ Database connected")
+
+	// Initialize repositories
+	msgRepo := repository.NewMessageRepository(db)
+
 	// Initialize services
 	aiSvc := openaiService.NewService(openaiService.Config{
 		APIKey: cfg.OpenAI.APIKey,
 		Model:  cfg.OpenAI.Model,
 	})
 
-	// Initialize Discord bot
+	ragSvc := ragService.NewService(aiSvc, msgRepo)
+
+	// Initialize Discord bot with RAG capability
 	bot, err := discordService.NewBot(discordService.BotConfig{
 		Token:   cfg.Discord.Token,
 		GuildID: cfg.Discord.GuildID,
-	}, aiSvc)
+	}, aiSvc, ragSvc)
 	if err != nil {
 		log.Fatalf("❌ Failed to create bot: %v", err)
 	}
@@ -40,6 +56,8 @@ func main() {
 		log.Fatalf("❌ Failed to start bot: %v", err)
 	}
 	defer bot.Stop()
+
+	log.Println("🤖 T.A.R.S is now online with RAG capabilities!")
 
 	// Wait for interrupt signal
 	stop := make(chan os.Signal, 1)

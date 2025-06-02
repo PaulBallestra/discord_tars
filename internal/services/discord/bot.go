@@ -8,15 +8,17 @@ import (
 	"time"
 
 	"discord-tars/internal/interfaces"
+	"discord-tars/internal/services/rag"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 type Bot struct {
-	session   *discordgo.Session
-	aiService interfaces.AIService
-	config    BotConfig
-	commands  []*discordgo.ApplicationCommand
+	session    *discordgo.Session
+	aiService  interfaces.AIService
+	ragService *rag.Service
+	config     BotConfig
+	commands   []*discordgo.ApplicationCommand
 }
 
 type BotConfig struct {
@@ -24,17 +26,18 @@ type BotConfig struct {
 	GuildID string
 }
 
-func NewBot(config BotConfig, aiService interfaces.AIService) (*Bot, error) {
+func NewBot(config BotConfig, aiService interfaces.AIService, ragService *rag.Service) (*Bot, error) {
 	session, err := discordgo.New("Bot " + config.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discord session: %w", err)
 	}
 
 	bot := &Bot{
-		session:   session,
-		aiService: aiService,
-		config:    config,
-		commands:  make([]*discordgo.ApplicationCommand, 0),
+		session:    session,
+		aiService:  aiService,
+		ragService: ragService,
+		config:     config,
+		commands:   make([]*discordgo.ApplicationCommand, 0),
 	}
 
 	bot.setupHandlers()
