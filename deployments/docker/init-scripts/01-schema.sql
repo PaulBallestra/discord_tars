@@ -1,4 +1,3 @@
-cat > deployments/docker/init-scripts/init.sql << 'EOF'
 -- T.A.R.S Discord Bot Database Schema
 -- This script initializes the database with all necessary tables for RAG functionality
 
@@ -110,4 +109,3 @@ BEGIN
     RAISE NOTICE 'Tables created: guilds, channels, users, messages, message_embeddings, conversation_context, bot_interactions';
     RAISE NOTICE 'pgvector extension enabled for RAG functionality';
 END $$;
-EOF
