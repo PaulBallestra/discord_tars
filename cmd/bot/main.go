@@ -31,6 +31,14 @@ func main() {
 	defer db.Close()
 	log.Println("✅ Database connected with GORM")
 
+	// Verify pgvector extension
+	var extensionExists bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')").Scan(&extensionExists).Error
+	if err != nil || !extensionExists {
+		log.Fatalf("❌ pgvector extension not enabled: %v", err)
+	}
+	log.Println("✅ pgvector extension verified")
+
 	// Initialize repositories
 	msgRepo := repository.NewMessageRepository(db)
 
@@ -40,21 +48,17 @@ func main() {
 		Model:  cfg.OpenAI.Model,
 	})
 
-	// Initialize RAG service without session first (we'll update it after bot creation)
-	ragSvc := ragService.NewService(aiSvc, msgRepo, nil)
-
-	// Initialize Discord bot with RAG capability
+	// Initialize Discord bot
 	bot, err := discordService.NewBot(discordService.BotConfig{
 		Token:   cfg.Discord.Token,
 		GuildID: cfg.Discord.GuildID,
-	}, aiSvc, ragSvc)
+	}, aiSvc, nil)
 	if err != nil {
 		log.Fatalf("❌ Failed to create bot: %v", err)
 	}
 
-	// Get Discord session from bot and update RAG service
-	discordSession := bot.GetSession()
-	ragSvc = ragService.NewService(aiSvc, msgRepo, discordSession)
+	// Initialize RAG service with bot session
+	ragSvc := ragService.NewService(aiSvc, msgRepo, bot.GetSession())
 	bot.SetRAGService(ragSvc)
 
 	// Start bot
